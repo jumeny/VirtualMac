@@ -112,9 +112,6 @@ git -C "$SOURCE" apply --check -p1 "$PATCH_FILE" ||
     die "Cupecups port does not apply cleanly to this upstream source. Update the port before building this version."
 git -C "$SOURCE" apply -p1 "$PATCH_FILE"
 
-echo "Applying the maintained lock-on-device-lock feature..."
-python3 "$SCRIPT_DIR/apply-roothide-lock-feature.py" "$SOURCE"
-
 git -C "$SOURCE" add -A
 git -C "$SOURCE" commit --quiet -m "RootHide port for $UPSTREAM_COMMIT"
 
