@@ -33,10 +33,9 @@ jobs:
         run: |
           git push origin "refs/remotes/upstream/main:refs/heads/upstream-sync" --force
           {
-            echo "## nfzerox upstream synchronized"
-            echo
-            echo "- Repository: https://github.com/nfzerox/VirtualMacOniPad"
-            echo "- Branch: `main`"
-            echo "- Commit: `$UPSTREAM_SHA`"
-            echo "- Mirror branch: `upstream-sync`"
+            printf '%s\n' "## nfzerox upstream synchronized" ""
+            printf '%s\n' "- Repository: https://github.com/nfzerox/VirtualMacOniPad"
+            printf '%s\n' "- Branch: \`main\`"
+            printf '%s\n' "- Commit: \`$UPSTREAM_SHA\`"
+            printf '%s\n' "- Mirror branch: \`upstream-sync\`"
           } >> "$GITHUB_STEP_SUMMARY"
