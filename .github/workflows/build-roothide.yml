@@ -63,12 +63,34 @@ jobs:
           python3 tests/test-restore-cleanup.py
           python3 tests/test-roothide-service-ownership.py
 
-      - name: Build standard base package, then RootHide package
+      - name: Download the pinned Cupecups runtime base package
+        env:
+          BUILD_ROOT: ${{ runner.temp }}/virtualmac-build
+        run: |
+          set -euo pipefail
+          mkdir -p "$BUILD_ROOT/downloads"
+          BASE_DEB="$BUILD_ROOT/downloads/VirtualMac_1.2.3.deb"
+          curl --fail --location --retry 3 --retry-all-errors \
+            --output "$BASE_DEB.part" \
+            "https://github.com/nfzerox/VirtualMacOniPad/releases/download/1.2.3/VirtualMac_1.2.3.deb"
+          mv "$BASE_DEB.part" "$BASE_DEB"
+          EXPECTED_SHA256="435ce1dc76b9e18b1547c77b84e2cf33ffe40a16be63e366f181d14709a41aa0"
+          ACTUAL_SHA256="$(shasum -a 256 "$BASE_DEB" | awk '{print $1}')"
+          [[ "$ACTUAL_SHA256" == "$EXPECTED_SHA256" ]] || {
+            echo "::error::Pinned 1.2.3 runtime package checksum mismatch"
+            exit 1
+          }
+          [[ "$(dpkg-deb -f "$BASE_DEB" Package)" == "com.mac.virtual" ]] || {
+            echo "::error::Unexpected package identifier in pinned runtime package"
+            exit 1
+          }
+          echo "Verified the Cupecups-pinned 1.2.3 runtime base ($ACTUAL_SHA256)"
+
+      - name: Build RootHide package from the prepared source
         id: package
         env:
           SOURCE_DIR: ${{ steps.prepare.outputs.source_dir }}
           UPSTREAM_REF: ${{ inputs.upstream_ref }}
-          SOURCE_SHA256: ${{ steps.prepare.outputs.source_sha256 }}
         run: |
           set -euo pipefail
           SAFE_VERSION="$(printf '%s' "${UPSTREAM_REF:-zip-build}" | tr '/ ' '--' | tr -cd 'A-Za-z0-9.+:~_-')"
@@ -76,24 +98,37 @@ jobs:
           if [[ ! "$SAFE_VERSION" =~ ^[0-9] ]]; then
             SAFE_VERSION="0~$SAFE_VERSION"
           fi
+
           BUILD_ROOT="$RUNNER_TEMP/virtualmac-build"
-          mkdir -p "$BUILD_ROOT"
-          cd "$SOURCE_DIR/VirtualMac"
           export VZ_BUILD_ROOT="$BUILD_ROOT"
-          export VZ_RELEASE_VERSION="$SAFE_VERSION"
-          bash scripts/build-ipad-deb.sh 2>&1 | tee "$RUNNER_TEMP/standard-build.log"
-          BASE_DEB="$(find "$BUILD_ROOT/release" -maxdepth 1 -type f -name '*.deb' -print -quit)"
-          test -n "$BASE_DEB" || { echo "::error::standard base .deb was not produced"; exit 1; }
-          VZ_BASE_DEB="$BASE_DEB" \
-            VZ_BUILD_ROOT="$BUILD_ROOT" \
-            VZ_PACKAGE_VERSION="2:${SAFE_VERSION}+roothide.${GITHUB_RUN_NUMBER}" \
-            bash scripts/build-roothide-deb.sh 2>&1 | tee "$RUNNER_TEMP/roothide-build.log"
+          export VZ_PACKAGE_VERSION="2:${SAFE_VERSION}+roothide.${GITHUB_RUN_NUMBER}"
+          unset VZ_BASE_DEB VZ_RELEASE_DEB
+
+          cd "$SOURCE_DIR/VirtualMac"
+          bash scripts/build-roothide-deb.sh 2>&1 | tee "$RUNNER_TEMP/roothide-build.log"
+
           ROOT_DEB="$BUILD_ROOT/roothide/VirtualMac_roothide.deb"
-          test -s "$ROOT_DEB" || { echo "::error::RootHide .deb was not produced"; exit 1; }
+          test -s "$ROOT_DEB" || {
+            echo "::error::RootHide .deb was not produced"
+            exit 1
+          }
+          [[ "$(dpkg-deb -f "$ROOT_DEB" Package)" == "com.mac.virtual" ]] || {
+            echo "::error::RootHide package identifier is incorrect"
+            exit 1
+          }
+          [[ "$(dpkg-deb -f "$ROOT_DEB" Version)" == "$VZ_PACKAGE_VERSION" ]] || {
+            echo "::error::RootHide package version does not match the requested build version"
+            exit 1
+          }
+
           OUTPUT="$RUNNER_TEMP/VirtualMac_${SAFE_VERSION}_roothide.deb"
           cp "$ROOT_DEB" "$OUTPUT"
           shasum -a 256 "$OUTPUT" > "$OUTPUT.sha256"
-          cp "$SOURCE_DIR/VirtualMac/roothide-build-provenance.txt" "$RUNNER_TEMP/build-provenance.txt"
+          {
+            cat "$SOURCE_DIR/VirtualMac/roothide-build-provenance.txt"
+            printf 'runtime_base_version=1.2.3\\n'
+            printf 'runtime_base_sha256=%s\\n' "$(shasum -a 256 "$BUILD_ROOT/downloads/VirtualMac_1.2.3.deb" | awk '{print $1}')"
+          } > "$RUNNER_TEMP/build-provenance.txt"
           {
             echo "deb_path=$OUTPUT"
             echo "version=$SAFE_VERSION"
