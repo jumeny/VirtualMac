@@ -75,6 +75,9 @@ jobs:
           set -euo pipefail
           SAFE_VERSION="$(printf '%s' "${UPSTREAM_REF:-zip-build}" | tr '/ ' '--' | tr -cd 'A-Za-z0-9.+:~_-')"
           SAFE_VERSION="${SAFE_VERSION:-zip-build}"
+          if [[ ! "$SAFE_VERSION" =~ ^[0-9] ]]; then
+            SAFE_VERSION="0~$SAFE_VERSION"
+          fi
           BUILD_ROOT="$RUNNER_TEMP/virtualmac-build"
           mkdir -p "$BUILD_ROOT"
           cd "$SOURCE_DIR/VirtualMac"
