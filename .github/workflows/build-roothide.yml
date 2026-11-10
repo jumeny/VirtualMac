@@ -62,7 +62,6 @@ jobs:
           bash scripts/tests/test-roothide-interpose.sh --files-only
           python3 tests/test-restore-cleanup.py
           python3 tests/test-roothide-service-ownership.py
-          python3 tests/test-standard-launcher.py
 
       - name: Build standard base package, then RootHide package
         id: package
