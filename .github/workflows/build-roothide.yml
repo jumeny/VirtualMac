@@ -29,10 +29,10 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 180
     steps:
-      - name: Check out the selected integration branch
+      - name: Check out the RootHide build helper from main
         uses: actions/checkout@v4
         with:
-          ref: roothide-cupecups
+          ref: main
           path: port
           fetch-depth: 1
 
