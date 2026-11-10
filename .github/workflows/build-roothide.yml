@@ -36,7 +36,7 @@ jobs:
           path: port
           fetch-depth: 1
 
-      - name: Prepare nfzerox source and apply Cupecups RootHide port
+      - name: Prepare selected nfzerox source and apply Cupecups port
         id: prepare
         env:
           UPSTREAM_REF: ${{ inputs.upstream_ref }}
