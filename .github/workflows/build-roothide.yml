@@ -151,15 +151,12 @@ jobs:
           NOTES_TMP="$NOTES.tmp"
           REF="$UPSTREAM_REF"
           RELEASE_TAG=""
-          RAW_REF="$REF"
 
           case "$REF" in
             refs/tags/*)
               RELEASE_TAG="${REF#refs/tags/}"
-              RAW_REF="$RELEASE_TAG"
               ;;
             refs/heads/*)
-              RAW_REF="${REF#refs/heads/}"
               ;;
             *)
               RELEASE_TAG="$REF"
@@ -182,7 +179,7 @@ jobs:
             for CHANGELOG_PATH in CHANGELOG.md CHANGES.md HISTORY.md \
                 docs/CHANGELOG.md docs/CHANGES.md; do
               if curl --fail --silent --show-error --location \
-                  "https://raw.githubusercontent.com/nfzerox/VirtualMacOniPad/$RAW_REF/$CHANGELOG_PATH" \
+                  "https://raw.githubusercontent.com/nfzerox/VirtualMacOniPad/$UPSTREAM_COMMIT/$CHANGELOG_PATH" \
                   --output "$NOTES_TMP"; then
                 if [[ -s "$NOTES_TMP" ]]; then
                   mv "$NOTES_TMP" "$NOTES"
