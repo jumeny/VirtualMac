@@ -1,8 +1,6 @@
 #!/bin/bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
 UPSTREAM_REPO="https://github.com/nfzerox/VirtualMacOniPad.git"
 CUP_REPO="https://github.com/cupecups/VirtualMacOniPad-Roothide.git"
 CUP_COMMIT="ae364321cd47553342d4d8e69c011eabc5be7e45"
@@ -18,7 +16,7 @@ SOURCE_ZIP_URL="${SOURCE_ZIP_URL:-}"
 
 die() { echo "::error::$*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "missing command: $1"; }
-for tool in git tar rsync curl shasum python3; do need "$tool"; done
+for tool in git tar rsync curl shasum; do need "$tool"; done
 
 [[ -n "$UPSTREAM_REF" || -n "$SOURCE_ZIP_URL" ]] || die "set UPSTREAM_REF or SOURCE_ZIP_URL"
 ZIP_REF=""
