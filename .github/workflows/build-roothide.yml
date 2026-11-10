@@ -123,12 +123,6 @@ jobs:
 
           OUTPUT="$RUNNER_TEMP/VirtualMac_${SAFE_VERSION}_roothide.deb"
           cp "$ROOT_DEB" "$OUTPUT"
-          shasum -a 256 "$OUTPUT" > "$OUTPUT.sha256"
-          {
-            cat "$SOURCE_DIR/VirtualMac/roothide-build-provenance.txt"
-            printf 'runtime_base_version=1.2.3\n'
-            printf 'runtime_base_sha256=%s\n' "$(shasum -a 256 "$BUILD_ROOT/downloads/VirtualMac_1.2.3.deb" | awk '{print $1}')"
-          } > "$RUNNER_TEMP/build-provenance.txt"
           {
             echo "deb_path=$OUTPUT"
             echo "version=$SAFE_VERSION"
@@ -140,11 +134,92 @@ jobs:
           name: VirtualMac-RootHide-${{ steps.package.outputs.version }}
           path: |
             ${{ steps.package.outputs.deb_path }}
-            ${{ steps.package.outputs.deb_path }}.sha256
-            ${{ runner.temp }}/build-provenance.txt
             ${{ runner.temp }}/roothide-build.log
           if-no-files-found: error
           retention-days: 30
+
+      - name: Fetch changelog from nfzerox
+        id: changelog
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_REF: ${{ steps.prepare.outputs.upstream_ref }}
+          UPSTREAM_COMMIT: ${{ steps.prepare.outputs.upstream_commit }}
+        run: |
+          set -euo pipefail
+          NOTES="$RUNNER_TEMP/upstream-changelog.md"
+          NOTES_TMP="$NOTES.tmp"
+          REF="$UPSTREAM_REF"
+          RELEASE_TAG=""
+          RAW_REF="$REF"
+
+          case "$REF" in
+            refs/tags/*)
+              RELEASE_TAG="${REF#refs/tags/}"
+              RAW_REF="$RELEASE_TAG"
+              ;;
+            refs/heads/*)
+              RAW_REF="${REF#refs/heads/}"
+              ;;
+            *)
+              RELEASE_TAG="$REF"
+              ;;
+          esac
+
+          # nfzerox publishes its version changelog in GitHub Release notes.
+          # Use those notes for tags whenever they exist.
+          if [[ -n "$RELEASE_TAG" ]]; then
+            if gh api "repos/nfzerox/VirtualMacOniPad/releases/tags/$RELEASE_TAG" \
+                --jq '.body // empty' > "$NOTES_TMP" 2>/dev/null &&
+                [[ -s "$NOTES_TMP" ]]; then
+              mv "$NOTES_TMP" "$NOTES"
+            fi
+          fi
+
+          # Branches and commits may not have a GitHub Release. Look for a
+          # conventional changelog file in the upstream source at that ref.
+          if [[ ! -s "$NOTES" ]]; then
+            for CHANGELOG_PATH in CHANGELOG.md CHANGES.md HISTORY.md \
+                docs/CHANGELOG.md docs/CHANGES.md; do
+              if curl --fail --silent --show-error --location \
+                  "https://raw.githubusercontent.com/nfzerox/VirtualMacOniPad/$RAW_REF/$CHANGELOG_PATH" \
+                  --output "$NOTES_TMP"; then
+                if [[ -s "$NOTES_TMP" ]]; then
+                  mv "$NOTES_TMP" "$NOTES"
+                  break
+                fi
+              fi
+            done
+          fi
+
+          # For an unreleased ref without a changelog file, publish the
+          # upstream commit subjects since the latest nfzerox release.
+          if [[ ! -s "$NOTES" ]]; then
+            LATEST_TAG="$(gh api repos/nfzerox/VirtualMacOniPad/releases/latest \
+              --jq '.tag_name' 2>/dev/null || true)"
+            if [[ -n "$LATEST_TAG" && "$LATEST_TAG" != "$RELEASE_TAG" ]]; then
+              gh api "repos/nfzerox/VirtualMacOniPad/compare/${LATEST_TAG}...${UPSTREAM_COMMIT}" \
+                --jq '[.commits[].commit.message | split("\n")[0]] | map("- " + .) | .[]' \
+                > "$NOTES_TMP" 2>/dev/null || true
+              if [[ -s "$NOTES_TMP" ]]; then
+                {
+                  printf 'Changes since nfzerox release %s\n\n' "$LATEST_TAG"
+                  cat "$NOTES_TMP"
+                } > "$NOTES"
+              fi
+            fi
+          fi
+
+          # Never reuse the old hard-coded packaging note if upstream has no
+          # published changelog for this ref.
+          if [[ ! -s "$NOTES" ]]; then
+            {
+              printf 'No upstream changelog or release notes were published for %s.\n\n' "$REF"
+              printf 'Upstream source: https://github.com/nfzerox/VirtualMacOniPad/commit/%s\n' "$UPSTREAM_COMMIT"
+            } > "$NOTES"
+          fi
+
+          echo "notes_path=$NOTES" >> "$GITHUB_OUTPUT"
 
       - name: Publish GitHub Release
         if: ${{ inputs.publish }}
@@ -152,13 +227,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           DEB_PATH: ${{ steps.package.outputs.deb_path }}
           VERSION: ${{ steps.package.outputs.version }}
-          UPSTREAM_REF: ${{ inputs.upstream_ref }}
+          NOTES_PATH: ${{ steps.changelog.outputs.notes_path }}
         run: |
-          TAG="roothide-${VERSION}-run-${GITHUB_RUN_NUMBER}"
+          set -euo pipefail
+          TAG="roothide-$VERSION-run-$GITHUB_RUN_NUMBER"
+          test -s "$NOTES_PATH"
           gh release create "$TAG" \
             "$DEB_PATH" \
-            "$DEB_PATH.sha256" \
-            "$RUNNER_TEMP/build-provenance.txt" \
             --repo "$GITHUB_REPOSITORY" \
-            --title "Virtual Mac RootHide ${VERSION}" \
-            --notes "Built from nfzerox source ref: ${UPSTREAM_REF:-ZIP URL input}. Cupecups port compatibility checks and package audits passed. See attached provenance and checksum."
+            --title "Virtual Mac RootHide $VERSION" \
+            --notes-file "$NOTES_PATH"
