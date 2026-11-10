@@ -4,10 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       upstream_ref:
-        description: "nfzerox tag, branch, or commit (for example 1.2.4)"
+        description: "Type an nfzerox tag, branch, or commit (leave blank only if using the ZIP URL)"
         required: false
         type: string
-        default: "1.2.3"
       source_zip_url:
         description: "Optional ZIP URL from github.com/nfzerox/VirtualMacOniPad (overrides upstream_ref)"
         required: false
