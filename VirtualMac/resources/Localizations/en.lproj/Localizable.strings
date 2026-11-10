@@ -319,4 +319,3 @@
 "You can assign between %llu and %llu processor cores to this Virtual Mac, with %lu processor cores as the recommendation.\n\nMaxing out processor core assignment does not guarantee improved performance in Virtual Mac, as iPadOS also needs processor power to coordinate underlying tasks." = "You can assign between %llu and %llu processor cores to this Virtual Mac, with %lu processor cores as the recommendation.\n\nMaxing out processor core assignment does not guarantee improved performance in Virtual Mac, as iPadOS also needs processor power to coordinate underlying tasks.";
 "Your changes to this Virtual Mac will not be saved." = "Your changes to this Virtual Mac will not be saved.";
 "“%@” and all files stored in it will be permanently deleted." = "“%@” and all files stored in it will be permanently deleted.";
-
