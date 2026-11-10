@@ -340,7 +340,7 @@ static NSString *VZSettingsFittingTitle(UITableView *tableView,
         NSString *visibility = [settings stringForKey:VZHUDVisibilityKey];
         cell.detailTextLabel.text = names[visibility] ?: VZL(@"On");
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
-    } else if (indexPath.section == 0 && indexPath.row == 3) {
+    } else if (indexPath.section == 0) {
         cell.textLabel.text = VZSettingsFittingTitle(tableView,
             VZL(@"Virtual Mac Controls Opacity"), VZL(@"Controls Opacity"), 196.0);
         UISlider *slider = [[[UISlider alloc] initWithFrame:
