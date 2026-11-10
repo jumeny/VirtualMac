@@ -24,6 +24,7 @@ NSString * const VZExternalDisplayScrollFixKey = @"ExternalDisplayScrollFix";
 NSString * const VZScrollingSpeedKey = @"ScrollingSpeed";
 NSString * const VZHUDOpacityKey = @"HUDOpacity";
 NSString * const VZDebugLoggingKey = @"DebugLogging";
+NSString * const VZLockGuestWhenDeviceLocksKey = @"LockGuestWhenDeviceLocks";
 NSString * const VZGamepadRelayEnabledKey = @"GamepadRelayEnabled";
 NSString * const VZGamepadDestinationKey = @"GamepadDestination";
 NSString * const VZGamepadTransportKey = @"GamepadTransport";
@@ -120,6 +121,7 @@ NSString *VZVirtualMacRuntimeRootPath(void)
         VZScrollingSpeedKey: @"0.25",
         VZHUDOpacityKey: @"0.55",
         VZDebugLoggingKey: VZDebugLoggingModeOff,
+        VZLockGuestWhenDeviceLocksKey: @NO,
         VZGamepadRelayEnabledKey: @NO,
         VZGamepadDestinationKey: @"",
         VZGamepadTransportKey: VZGamepadTransportVirtioSocket,
