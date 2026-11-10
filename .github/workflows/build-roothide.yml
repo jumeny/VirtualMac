@@ -142,7 +142,6 @@ jobs:
             ${{ steps.package.outputs.deb_path }}
             ${{ steps.package.outputs.deb_path }}.sha256
             ${{ runner.temp }}/build-provenance.txt
-            ${{ runner.temp }}/standard-build.log
             ${{ runner.temp }}/roothide-build.log
           if-no-files-found: error
           retention-days: 30
