@@ -5988,29 +5988,6 @@ static void disconnectExternalDisplay(void) {
     return YES;
 }
 
-- (void)applicationProtectedDataWillBecomeUnavailable:(UIApplication *)application
-{
-    (void)application;
-    if (![VZAppSettings.sharedSettings
-          boolForKey:VZLockGuestWhenDeviceLocksKey])
-        return;
-    if (!gVirtualMachine || !gKeyboard) {
-        printf("[VirtualMac] device locked; no active guest keyboard to lock\n");
-        return;
-    }
-
-    // macOS Control-Command-Q locks the guest session. Send the shortcut
-    // directly through the existing virtual keyboard before iPadOS
-    // finishes making protected data unavailable and suspends this app.
-    printf("[VirtualMac] device protected data becoming unavailable; locking guest\\n");
-    sendKey((UIKeyboardHIDUsage)0xe0, YES); // Left Control
-    sendKey((UIKeyboardHIDUsage)0xe3, YES); // Left Command
-    sendKey((UIKeyboardHIDUsage)0x14, YES); // Q
-    sendKey((UIKeyboardHIDUsage)0x14, NO);
-    sendKey((UIKeyboardHIDUsage)0xe3, NO);
-    sendKey((UIKeyboardHIDUsage)0xe0, NO);
-}
-
 - (void)applicationWillResignActive:(UIApplication *)application
 {
     (void)application;
