@@ -117,6 +117,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           DEB_PATH: ${{ steps.package.outputs.deb_path }}
           VERSION: ${{ steps.package.outputs.version }}
+          UPSTREAM_REF: ${{ inputs.upstream_ref }}
         run: |
           TAG="roothide-${VERSION}-run-${GITHUB_RUN_NUMBER}"
           gh release create "$TAG" \
@@ -125,4 +126,4 @@ jobs:
             "$RUNNER_TEMP/build-provenance.txt" \
             --repo "$GITHUB_REPOSITORY" \
             --title "Virtual Mac RootHide ${VERSION}" \
-            --notes "Built from nfzerox source ref: ${{ inputs.upstream_ref }}. Cupecups port compatibility checks and package audits passed. See attached provenance and checksum."
+            --notes "Built from nfzerox source ref: ${UPSTREAM_REF:-ZIP URL input}. Cupecups port compatibility checks and package audits passed. See attached provenance and checksum."
