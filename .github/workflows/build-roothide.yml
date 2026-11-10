@@ -36,7 +36,7 @@ jobs:
           path: port
           fetch-depth: 1
 
-      - name: Prepare nfzerox source, apply Cupecups port, and local guest-lock feature
+      - name: Prepare nfzerox source and apply Cupecups RootHide port
         id: prepare
         env:
           UPSTREAM_REF: ${{ inputs.upstream_ref }}
