@@ -235,7 +235,7 @@ static NSString *VZSettingsFittingTitle(UITableView *tableView,
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section
 {
     (void)tableView;
-    return section == 0 ? 4 : section == 1 ? 6 : section == 2 ? 5 :
+    return section == 0 ? 5 : section == 1 ? 6 : section == 2 ? 5 :
         section == 3 ? 3 : section == 4 ? 3 : section == 5 ? 2 :
         section == 6 ? 1 : 4;
 }
@@ -251,6 +251,8 @@ static NSString *VZSettingsFittingTitle(UITableView *tableView,
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section
 {
     (void)tableView;
+    if (section == 0)
+        return VZL(@"Locks the macOS guest when iPadOS is about to make protected data unavailable. A device passcode is required.");
     if (section == 4)
         return [NSString stringWithFormat:VZL(@"Virtual Mac devices are stored in %@."), VZVMLibraryPath()];
     if (section == 2)
@@ -340,7 +342,7 @@ static NSString *VZSettingsFittingTitle(UITableView *tableView,
         NSString *visibility = [settings stringForKey:VZHUDVisibilityKey];
         cell.detailTextLabel.text = names[visibility] ?: VZL(@"On");
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
-    } else if (indexPath.section == 0) {
+    } else if (indexPath.section == 0 && indexPath.row == 3) {
         cell.textLabel.text = VZSettingsFittingTitle(tableView,
             VZL(@"Virtual Mac Controls Opacity"), VZL(@"Controls Opacity"), 196.0);
         UISlider *slider = [[[UISlider alloc] initWithFrame:
@@ -351,6 +353,15 @@ static NSString *VZSettingsFittingTitle(UITableView *tableView,
         [slider addTarget:self action:@selector(hudOpacityChanged:)
             forControlEvents:UIControlEventValueChanged];
         cell.accessoryView = slider;
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
+    } else if (indexPath.section == 0 && indexPath.row == 4) {
+        cell.textLabel.text = VZL(@"Lock macOS when iPad locks");
+        UISwitch *toggle = [[[UISwitch alloc] init] autorelease];
+        toggle.tag = 200;
+        toggle.on = [settings boolForKey:VZLockGuestWhenDeviceLocksKey];
+        [toggle addTarget:self action:@selector(inputToggleChanged:)
+            forControlEvents:UIControlEventValueChanged];
+        cell.accessoryView = toggle;
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
     } else if (indexPath.section == 1 && indexPath.row < 5) {
         NSArray *titles = @[VZL(@"Show Cursor When Using Touch"),
@@ -508,7 +519,8 @@ static NSString *VZSettingsFittingTitle(UITableView *tableView,
                             VZHomeIndicatorSuppressionKey];
     NSArray *compatibilityKeys = @[VZKeyboardCrashWorkaroundKey,
                                    VZExternalDisplayScrollFixKey];
-    NSString *key = sender.tag >= 100 ? compatibilityKeys[sender.tag - 100]
+    NSString *key = sender.tag == 200 ? VZLockGuestWhenDeviceLocksKey
+        : sender.tag >= 100 ? compatibilityKeys[sender.tag - 100]
         : sender.tag >= 30 ? iPadOSKeys[sender.tag - 30]
         : sender.tag == 20 ? VZKeyboardShortcutCaptureKey
                            : touchKeys[sender.tag];
