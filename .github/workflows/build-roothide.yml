@@ -126,8 +126,8 @@ jobs:
           shasum -a 256 "$OUTPUT" > "$OUTPUT.sha256"
           {
             cat "$SOURCE_DIR/VirtualMac/roothide-build-provenance.txt"
-            printf 'runtime_base_version=1.2.3\\n'
-            printf 'runtime_base_sha256=%s\\n' "$(shasum -a 256 "$BUILD_ROOT/downloads/VirtualMac_1.2.3.deb" | awk '{print $1}')"
+            printf 'runtime_base_version=1.2.3\n'
+            printf 'runtime_base_sha256=%s\n' "$(shasum -a 256 "$BUILD_ROOT/downloads/VirtualMac_1.2.3.deb" | awk '{print $1}')"
           } > "$RUNNER_TEMP/build-provenance.txt"
           {
             echo "deb_path=$OUTPUT"
