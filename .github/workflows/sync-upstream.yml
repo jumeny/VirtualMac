@@ -1,0 +1,42 @@
+name: Sync nfzerox upstream
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 */6 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-nfzerox-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository control branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Fetch nfzerox main
+        run: |
+          git remote add upstream https://github.com/nfzerox/VirtualMacOniPad.git
+          git fetch --no-tags upstream main
+          echo "UPSTREAM_SHA=$(git rev-parse refs/remotes/upstream/main)" >> "$GITHUB_ENV"
+
+      - name: Update upstream-sync mirror branch
+        run: |
+          git push origin "refs/remotes/upstream/main:refs/heads/upstream-sync" --force
+          {
+            echo "## nfzerox upstream synchronized"
+            echo
+            echo "- Repository: https://github.com/nfzerox/VirtualMacOniPad"
+            echo "- Branch: `main`"
+            echo "- Commit: `$UPSTREAM_SHA`"
+            echo "- Mirror branch: `upstream-sync`"
+          } >> "$GITHUB_STEP_SUMMARY"
