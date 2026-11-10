@@ -320,5 +320,3 @@
 "Your changes to this Virtual Mac will not be saved." = "Your changes to this Virtual Mac will not be saved.";
 "“%@” and all files stored in it will be permanently deleted." = "“%@” and all files stored in it will be permanently deleted.";
 
-"Lock macOS when iPad locks" = "Lock macOS when iPad locks";
-"Locks the macOS guest when iPadOS is about to make protected data unavailable. A device passcode is required." = "Locks the macOS guest when iPadOS is about to make protected data unavailable. A device passcode is required.";
