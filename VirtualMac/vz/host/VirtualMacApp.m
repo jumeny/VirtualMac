@@ -5995,7 +5995,7 @@ static void disconnectExternalDisplay(void) {
           boolForKey:VZLockGuestWhenDeviceLocksKey])
         return;
     if (!gVirtualMachine || !gKeyboard) {
-        printf("[VirtualMac] device locked; no active guest keyboard to lock\\n");
+        printf("[VirtualMac] device locked; no active guest keyboard to lock\n");
         return;
     }
 
