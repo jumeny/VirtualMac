@@ -1,0 +1,128 @@
+name: Build RootHide package
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: "nfzerox tag, branch, or commit (for example 1.2.4)"
+        required: false
+        type: string
+        default: "1.2.3"
+      source_zip_url:
+        description: "Optional ZIP URL from github.com/nfzerox/VirtualMacOniPad (overrides upstream_ref)"
+        required: false
+        type: string
+      publish:
+        description: "Create a GitHub Release after all checks pass"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: roothide-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 180
+    steps:
+      - name: Check out the selected integration branch
+        uses: actions/checkout@v4
+        with:
+          ref: roothide-cupecups
+          path: port
+          fetch-depth: 1
+
+      - name: Prepare selected nfzerox source and apply Cupecups port
+        id: prepare
+        env:
+          UPSTREAM_REF: ${{ inputs.upstream_ref }}
+          SOURCE_ZIP_URL: ${{ inputs.source_zip_url }}
+        run: |
+          bash port/scripts/prepare-roothide-source.sh
+
+      - name: Install package build dependencies
+        run: |
+          brew update
+          brew install dpkg ldid
+
+      - name: Run Cupecups RootHide regression tests
+        env:
+          SOURCE_DIR: ${{ steps.prepare.outputs.source_dir }}
+        run: |
+          cd "$SOURCE_DIR/VirtualMac"
+          bash scripts/tests/test-jailbreak-paths.sh
+          bash scripts/tests/test-standard-launcher.sh
+          bash scripts/tests/test-runtime-processes.sh
+          bash scripts/tests/test-roothide-legacy-storage.sh
+          bash scripts/tests/test-roothide-storage.sh
+          bash scripts/tests/test-roothide-interpose.sh --files-only
+          python3 tests/test-restore-cleanup.py
+          python3 tests/test-roothide-service-ownership.py
+          python3 tests/test-standard-launcher.py
+
+      - name: Build standard base package, then RootHide package
+        id: package
+        env:
+          SOURCE_DIR: ${{ steps.prepare.outputs.source_dir }}
+          UPSTREAM_REF: ${{ inputs.upstream_ref }}
+          SOURCE_SHA256: ${{ steps.prepare.outputs.source_sha256 }}
+        run: |
+          set -euo pipefail
+          SAFE_VERSION="$(printf '%s' "${UPSTREAM_REF:-zip-build}" | tr '/ ' '--' | tr -cd 'A-Za-z0-9.+:~_-')"
+          SAFE_VERSION="${SAFE_VERSION:-zip-build}"
+          BUILD_ROOT="$RUNNER_TEMP/virtualmac-build"
+          mkdir -p "$BUILD_ROOT"
+          cd "$SOURCE_DIR/VirtualMac"
+          export VZ_BUILD_ROOT="$BUILD_ROOT"
+          export VZ_RELEASE_VERSION="$SAFE_VERSION"
+          bash scripts/build-ipad-deb.sh 2>&1 | tee "$RUNNER_TEMP/standard-build.log"
+          BASE_DEB="$(find "$BUILD_ROOT/release" -maxdepth 1 -type f -name '*.deb' -print -quit)"
+          test -n "$BASE_DEB" || { echo "::error::standard base .deb was not produced"; exit 1; }
+          VZ_BASE_DEB="$BASE_DEB" \
+            VZ_BUILD_ROOT="$BUILD_ROOT" \
+            VZ_PACKAGE_VERSION="2:${SAFE_VERSION}+roothide.${GITHUB_RUN_NUMBER}" \
+            bash scripts/build-roothide-deb.sh 2>&1 | tee "$RUNNER_TEMP/roothide-build.log"
+          ROOT_DEB="$BUILD_ROOT/roothide/VirtualMac_roothide.deb"
+          test -s "$ROOT_DEB" || { echo "::error::RootHide .deb was not produced"; exit 1; }
+          OUTPUT="$RUNNER_TEMP/VirtualMac_${SAFE_VERSION}_roothide.deb"
+          cp "$ROOT_DEB" "$OUTPUT"
+          shasum -a 256 "$OUTPUT" > "$OUTPUT.sha256"
+          cp "$SOURCE_DIR/VirtualMac/roothide-build-provenance.txt" "$RUNNER_TEMP/build-provenance.txt"
+          {
+            echo "deb_path=$OUTPUT"
+            echo "version=$SAFE_VERSION"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VirtualMac-RootHide-${{ steps.package.outputs.version }}
+          path: |
+            ${{ steps.package.outputs.deb_path }}
+            ${{ steps.package.outputs.deb_path }}.sha256
+            ${{ runner.temp }}/build-provenance.txt
+            ${{ runner.temp }}/standard-build.log
+            ${{ runner.temp }}/roothide-build.log
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEB_PATH: ${{ steps.package.outputs.deb_path }}
+          VERSION: ${{ steps.package.outputs.version }}
+        run: |
+          TAG="roothide-${VERSION}-run-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" \
+            "$DEB_PATH" \
+            "$DEB_PATH.sha256" \
+            "$RUNNER_TEMP/build-provenance.txt" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Virtual Mac RootHide ${VERSION}" \
+            --notes "Built from nfzerox source ref: ${{ inputs.upstream_ref }}. Cupecups port compatibility checks and package audits passed. See attached provenance and checksum."
