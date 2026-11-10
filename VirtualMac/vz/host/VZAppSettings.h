@@ -26,6 +26,7 @@ FOUNDATION_EXPORT NSString * const VZExternalDisplayScrollFixKey;
 FOUNDATION_EXPORT NSString * const VZScrollingSpeedKey;
 FOUNDATION_EXPORT NSString * const VZHUDOpacityKey;
 FOUNDATION_EXPORT NSString * const VZDebugLoggingKey;
+FOUNDATION_EXPORT NSString * const VZLockGuestWhenDeviceLocksKey;
 FOUNDATION_EXPORT NSString * const VZGamepadRelayEnabledKey;
 FOUNDATION_EXPORT NSString * const VZGamepadDestinationKey;
 FOUNDATION_EXPORT NSString * const VZGamepadTransportKey;
