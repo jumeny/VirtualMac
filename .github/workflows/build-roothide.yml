@@ -90,11 +90,16 @@ jobs:
         id: package
         env:
           SOURCE_DIR: ${{ steps.prepare.outputs.source_dir }}
-          UPSTREAM_REF: ${{ inputs.upstream_ref }}
+          UPSTREAM_REF: ${{ steps.prepare.outputs.upstream_ref }}
         run: |
           set -euo pipefail
           SAFE_VERSION="$(printf '%s' "${UPSTREAM_REF:-zip-build}" | tr '/ ' '--' | tr -cd 'A-Za-z0-9.+:~_-')"
           SAFE_VERSION="${SAFE_VERSION:-zip-build}"
+          APP_VERSION="${UPSTREAM_REF#refs/tags/}"
+          APP_VERSION="${APP_VERSION#refs/heads/}"
+          APP_VERSION="$(printf '%s' "$APP_VERSION" | tr '/ ' '--' | tr -cd 'A-Za-z0-9.+:~_-')"
+          APP_VERSION="${APP_VERSION:-$SAFE_VERSION}"
+          export VZ_APP_VERSION="${APP_VERSION}-roothide"
           if [[ ! "$SAFE_VERSION" =~ ^[0-9] ]]; then
             SAFE_VERSION="0~$SAFE_VERSION"
           fi
