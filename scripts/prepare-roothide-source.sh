@@ -110,6 +110,40 @@ git -C "$SOURCE" apply --check -p1 "$PATCH_FILE" ||
     die "Cupecups port does not apply cleanly to this upstream source. Update the port before building this version."
 git -C "$SOURCE" apply -p1 "$PATCH_FILE"
 
+# Make the in-app version follow the selected upstream ref instead of
+# retaining Cupecups' original 1.2.3 label. The workflow supplies
+# VZ_APP_VERSION at package-build time.
+python3 - "$SOURCE/VirtualMac/scripts/build-roothide-deb.sh" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+text = path.read_text()
+imports = """import pathlib
+import plistlib
+import subprocess
+import sys
+
+stage, source, out = map(pathlib.Path, sys.argv[1:4])"""
+updated_imports = """import os
+import pathlib
+import plistlib
+import subprocess
+import sys
+
+stage, source, out = map(pathlib.Path, sys.argv[1:4])"""
+old_version = "value['CFBundleShortVersionString'] = '1.2.3-roothide' + ('-dev' if sys.argv[4] == '1' else '')"
+new_version = "value['CFBundleShortVersionString'] = os.environ.get('VZ_APP_VERSION', '1.2.3-roothide') + ('-dev' if sys.argv[4] == '1' else '')"
+
+if text.count(imports) != 1:
+    raise SystemExit("Could not uniquely locate the Cupecups app-version build block")
+if text.count(old_version) != 1:
+    raise SystemExit("Could not uniquely locate the Cupecups hardcoded app version")
+text = text.replace(imports, updated_imports, 1)
+text = text.replace(old_version, new_version, 1)
+path.write_text(text)
+PY
+
 git -C "$SOURCE" add -A
 git -C "$SOURCE" commit --quiet -m "RootHide port for $UPSTREAM_COMMIT"
 
