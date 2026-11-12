@@ -30,6 +30,67 @@ def patch_app(path: Path) -> None:
         "audio-session state declaration",
     )
 
+    audio_configuration = r'''static void configureAudio(id configuration, NSDictionary *options) {
+    if ([NSUserDefaults.standardUserDefaults boolForKey:@"VZDisableAudio"]) {
+        printf("[VirtualMac] audio disabled by VZDisableAudio\\n");
+        return;
+    }
+
+    // Keep playback and capture on separate virtio-sound devices. Starting
+    // the guest output stream must not start the host microphone input stream.
+    BOOL outputEnabled = [options[@"AudioOutputEnabled"] boolValue];
+    BOOL inputEnabled = [options[@"AudioInputEnabled"] boolValue];
+    if (!outputEnabled && !inputEnabled) {
+        printf("[VirtualMac] audio disabled by VM configuration\\n");
+        return;
+    }
+
+    NSMutableArray *audioDevices = [NSMutableArray array];
+    if (outputEnabled) {
+        id sink = NEW("VZHostAudioOutputStreamSink");
+        id output = NEW("VZVirtioSoundDeviceOutputStreamConfiguration");
+        id outputDevice = NEW("VZVirtioSoundDeviceConfiguration");
+        if (sink && output && outputDevice) {
+            setObj(output, "setSink:", sink);
+            setObj(outputDevice, "setStreams:", @[output]);
+            [audioDevices addObject:outputDevice];
+        } else {
+            printf("[VirtualMac] virtio audio output unavailable sink=%p stream=%p device=%p\\n",
+                   sink, output, outputDevice);
+        }
+    }
+
+    if (inputEnabled) {
+        id source = NEW("VZHostAudioInputStreamSource");
+        id input = NEW("VZVirtioSoundDeviceInputStreamConfiguration");
+        id inputDevice = NEW("VZVirtioSoundDeviceConfiguration");
+        if (source && input && inputDevice) {
+            setObj(input, "setSource:", source);
+            setObj(inputDevice, "setStreams:", @[input]);
+            [audioDevices addObject:inputDevice];
+        } else {
+            printf("[VirtualMac] virtio microphone input unavailable source=%p stream=%p device=%p\\n",
+                   source, input, inputDevice);
+        }
+    }
+
+    if (audioDevices.count == 0) {
+        printf("[VirtualMac] no usable virtio audio devices were created\\n");
+        return;
+    }
+    setObj(configuration, "setAudioDevices:", audioDevices);
+    printf("[VirtualMac] configured separate virtio audio devices count=%lu output=%d input=%d\\n",
+           (unsigned long)audioDevices.count, outputEnabled, inputEnabled);
+}
+'''
+
+    text = replace_regex_once(
+        text,
+        r"static void configureAudio\\(id configuration, NSDictionary \\*options\\) \\{.*?\\n\\}\\n(?=\\nstatic BOOL videoToolboxAcceleratorSupported)",
+        audio_configuration + "\\n",
+        "separate virtio audio devices",
+    )
+
     microphone_functions = r'''static BOOL activateAudioSession(AVAudioSessionCategory category,
                                 AVAudioSessionCategoryOptions options,
                                 const char *purpose) {
@@ -227,13 +288,13 @@ def patch_library(path: Path) -> None:
     text = replace_once(
         text,
         "        VZAudioOutputEnabledKey: @YES,\n        VZAudioInputEnabledKey: @YES,",
-        "        VZAudioOutputEnabledKey: @YES,\n        VZAudioInputEnabledKey: @NO,\n        VZAudioInputConfiguredKey: @NO,",
-        "microphone-off default",
+        "        VZAudioOutputEnabledKey: @YES,\n        VZAudioInputEnabledKey: @YES,\n        VZAudioInputConfiguredKey: @NO,",
+        "microphone-on default",
     )
     text = replace_once(
         text,
         "    if ([saved isKindOfClass:NSDictionary.class])\n        [options addEntriesFromDictionary:saved];",
-        "    if ([saved isKindOfClass:NSDictionary.class])\n        [options addEntriesFromDictionary:saved];\n    // Older manifests inherited microphone-on as a default. Treat those as\n    // legacy defaults, not as a deliberate permission to capture audio.\n    if (![saved[VZAudioInputConfiguredKey] boolValue]) {\n        options[VZAudioInputEnabledKey] = @NO;\n        options[VZAudioInputConfiguredKey] = @NO;\n    }",
+        "    if ([saved isKindOfClass:NSDictionary.class])\n        [options addEntriesFromDictionary:saved];\n    // Preserve the normal microphone passthrough default for old manifests.\n    // Only a setting explicitly saved by the user overrides that default.\n    if (![saved[VZAudioInputConfiguredKey] boolValue]) {\n        options[VZAudioInputEnabledKey] = @YES;\n        options[VZAudioInputConfiguredKey] = @NO;\n    }",
         "legacy VM microphone migration",
     )
     text = replace_once(
