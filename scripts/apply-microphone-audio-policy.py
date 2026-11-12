@@ -32,7 +32,7 @@ def patch_app(path: Path) -> None:
 
     audio_configuration = r'''static void configureAudio(id configuration, NSDictionary *options) {
     if ([NSUserDefaults.standardUserDefaults boolForKey:@"VZDisableAudio"]) {
-        printf("[VirtualMac] audio disabled by VZDisableAudio\\n");
+        printf("[VirtualMac] audio disabled by VZDisableAudio\n");
         return;
     }
 
@@ -41,7 +41,7 @@ def patch_app(path: Path) -> None:
     BOOL outputEnabled = [options[@"AudioOutputEnabled"] boolValue];
     BOOL inputEnabled = [options[@"AudioInputEnabled"] boolValue];
     if (!outputEnabled && !inputEnabled) {
-        printf("[VirtualMac] audio disabled by VM configuration\\n");
+        printf("[VirtualMac] audio disabled by VM configuration\n");
         return;
     }
 
@@ -55,7 +55,7 @@ def patch_app(path: Path) -> None:
             setObj(outputDevice, "setStreams:", @[output]);
             [audioDevices addObject:outputDevice];
         } else {
-            printf("[VirtualMac] virtio audio output unavailable sink=%p stream=%p device=%p\\n",
+            printf("[VirtualMac] virtio audio output unavailable sink=%p stream=%p device=%p\n",
                    sink, output, outputDevice);
         }
     }
@@ -69,25 +69,25 @@ def patch_app(path: Path) -> None:
             setObj(inputDevice, "setStreams:", @[input]);
             [audioDevices addObject:inputDevice];
         } else {
-            printf("[VirtualMac] virtio microphone input unavailable source=%p stream=%p device=%p\\n",
+            printf("[VirtualMac] virtio microphone input unavailable source=%p stream=%p device=%p\n",
                    source, input, inputDevice);
         }
     }
 
     if (audioDevices.count == 0) {
-        printf("[VirtualMac] no usable virtio audio devices were created\\n");
+        printf("[VirtualMac] no usable virtio audio devices were created\n");
         return;
     }
     setObj(configuration, "setAudioDevices:", audioDevices);
-    printf("[VirtualMac] configured separate virtio audio devices count=%lu output=%d input=%d\\n",
+    printf("[VirtualMac] configured separate virtio audio devices count=%lu output=%d input=%d\n",
            (unsigned long)audioDevices.count, outputEnabled, inputEnabled);
 }
 '''
 
     text = replace_regex_once(
         text,
-        r"static void configureAudio\\(id configuration, NSDictionary \\*options\\) \\{.*?\\n\\}\\n(?=\\nstatic BOOL videoToolboxAcceleratorSupported)",
-        audio_configuration + "\\n",
+        r"static void configureAudio\(id configuration, NSDictionary \*options\) \{.*?\n\}\n(?=\nstatic BOOL videoToolboxAcceleratorSupported)",
+        audio_configuration + "\n",
         "separate virtio audio devices",
     )
 
