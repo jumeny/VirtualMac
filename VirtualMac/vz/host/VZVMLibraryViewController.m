@@ -41,6 +41,7 @@ static NSString * const VZPointingDeviceKey = @"PointingDevice";
 static NSString * const VZKeyboardDeviceKey = @"KeyboardDevice";
 static NSString * const VZAudioOutputEnabledKey = @"AudioOutputEnabled";
 static NSString * const VZAudioInputEnabledKey = @"AudioInputEnabled";
+static NSString * const VZAudioInputConfiguredKey = @"AudioInputConfigured";
 static NSString * const VZVideoToolboxEnabledKey = @"VideoToolboxEnabled";
 static NSString * const VZDisplayModeKey = @"DisplayMode";
 static NSString * const VZDisplayWidthKey = @"DisplayWidth";
@@ -364,7 +365,8 @@ NSDictionary *VZVMDefaultOptions(void)
         VZOpenGLAccelerationEnabledKey: @YES,
         VZGuestToolsRemovalPendingKey: @NO,
         VZAudioOutputEnabledKey: @YES,
-        VZAudioInputEnabledKey: @YES,
+        VZAudioInputEnabledKey: @NO,
+        VZAudioInputConfiguredKey: @NO,
         VZVideoToolboxEnabledKey: @YES,
         VZDisplayModeKey: @"NativeRetina",
         VZDisplayWidthKey: @1920,
@@ -382,6 +384,12 @@ NSDictionary *VZVMOptionsForBundle(NSString *bundlePath)
         [bundlePath stringByAppendingPathComponent:VZVMConfigurationFileName]];
     if ([saved isKindOfClass:NSDictionary.class])
         [options addEntriesFromDictionary:saved];
+    // Older manifests inherited microphone-on as a default. Treat those as
+    // legacy defaults, not as a deliberate permission to capture audio.
+    if (![saved[VZAudioInputConfiguredKey] boolValue]) {
+        options[VZAudioInputEnabledKey] = @NO;
+        options[VZAudioInputConfiguredKey] = @NO;
+    }
     [options removeObjectForKey:@"EnhancedMetalOpenGLEnabled"];
     if (![saved[VZPointingDeviceKey] isKindOfClass:NSString.class])
         options[VZPointingDeviceKey] =
@@ -1536,6 +1544,8 @@ void VZRemovePaths(NSArray<NSString *> *paths)
         self.options[VZGuestToolsRemovalPendingKey] = @NO;
         [self setGuestToolsSwitchOn:YES openGLOn:YES animated:YES];
     }
+    if (sender.tag == 1)
+        self.options[VZAudioInputConfiguredKey] = @YES;
     self.options[keys[sender.tag]] = @(sender.on);
 }
 
