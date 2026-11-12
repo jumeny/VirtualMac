@@ -365,7 +365,7 @@ NSDictionary *VZVMDefaultOptions(void)
         VZOpenGLAccelerationEnabledKey: @YES,
         VZGuestToolsRemovalPendingKey: @NO,
         VZAudioOutputEnabledKey: @YES,
-        VZAudioInputEnabledKey: @NO,
+        VZAudioInputEnabledKey: @YES,
         VZAudioInputConfiguredKey: @NO,
         VZVideoToolboxEnabledKey: @YES,
         VZDisplayModeKey: @"NativeRetina",
@@ -387,7 +387,7 @@ NSDictionary *VZVMOptionsForBundle(NSString *bundlePath)
     // Older manifests inherited microphone-on as a default. Treat those as
     // legacy defaults, not as a deliberate permission to capture audio.
     if (![saved[VZAudioInputConfiguredKey] boolValue]) {
-        options[VZAudioInputEnabledKey] = @NO;
+        options[VZAudioInputEnabledKey] = @YES;
         options[VZAudioInputConfiguredKey] = @NO;
     }
     [options removeObjectForKey:@"EnhancedMetalOpenGLEnabled"];
