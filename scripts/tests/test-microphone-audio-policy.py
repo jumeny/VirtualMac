@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression checks for Virtual Mac's opt-in microphone policy."""
+"""Regression checks for Virtual Mac's automatic microphone passthrough."""
 
 import os
 from pathlib import Path
@@ -12,8 +12,14 @@ library = library_path.read_text()
 
 checks = {
     "playback-only AVAudioSession category": "AVAudioSessionCategoryPlayback" in app,
-    "microphone category remains opt-in": "AVAudioSessionCategoryPlayAndRecord" in app,
-    "microphone permission is requested only in VM audio preparation": (
+    "microphone category remains available for input": "AVAudioSessionCategoryPlayAndRecord" in app,
+    "system microphone permission request is preserved": (
+        "requestRecordPermission:" in app
+        and "NSMicrophoneUsageDescription" in (
+            root / "VirtualMac" / "VirtualMac-Info.plist"
+        ).read_text()
+    ),
+    "microphone permission is requested by the existing system flow": (
         app.count("requestMicrophoneAccess(") == 2
         and "requestMicrophoneAccess(^{" not in app
     ),
@@ -21,16 +27,18 @@ checks = {
         "prepareAudioSessionForVM(runtimeOptions" in app
         and 'BOOL inputEnabled = [options[@"AudioInputEnabled"] boolValue];' in app
     ),
-    "audio session deactivates when VM stops": (
-        "deactivateAudioSession();" in app
+    "output and microphone use separate virtio sound devices": (
+        'setObj(outputDevice, "setStreams:", @[output]);' in app
+        and 'setObj(inputDevice, "setStreams:", @[input]);' in app
+        and "setAudioDevices:", audioDevices" in app
     ),
-    "new VM microphone input defaults off": (
-        "VZAudioInputEnabledKey: @NO" in library
+    "new VM microphone input remains enabled by default": (
+        "VZAudioInputEnabledKey: @YES" in library
         and "VZAudioInputConfiguredKey: @NO" in library
     ),
-    "legacy VM microphone-on defaults are migrated off": (
+    "legacy VM settings preserve the microphone default": (
         "if (![saved[VZAudioInputConfiguredKey] boolValue])" in library
-        and "options[VZAudioInputEnabledKey] = @NO;" in library
+        and "options[VZAudioInputEnabledKey] = @YES;" in library
     ),
     "user microphone toggle is remembered explicitly": (
         "self.options[VZAudioInputConfiguredKey] = @YES;" in library
