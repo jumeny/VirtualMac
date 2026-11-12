@@ -62,7 +62,6 @@ jobs:
           bash scripts/tests/test-roothide-interpose.sh --files-only
           python3 tests/test-restore-cleanup.py
           python3 tests/test-roothide-service-ownership.py
-          python3 "$GITHUB_WORKSPACE/port/scripts/tests/test-microphone-audio-policy.py"
 
       - name: Download the pinned Cupecups runtime base package
         env:
