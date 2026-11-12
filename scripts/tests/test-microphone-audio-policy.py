@@ -23,6 +23,7 @@ checks = {
         app.count("requestMicrophoneAccess(") == 2
         and "requestMicrophoneAccess(^{" not in app
     ),
+    "audio session deactivates when VM stops": "deactivateAudioSession();" in app,
     "VM startup prepares audio from selected VM options": (
         "prepareAudioSessionForVM(runtimeOptions" in app
         and 'BOOL inputEnabled = [options[@"AudioInputEnabled"] boolValue];' in app
