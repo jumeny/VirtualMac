@@ -41,7 +41,6 @@ static NSString * const VZPointingDeviceKey = @"PointingDevice";
 static NSString * const VZKeyboardDeviceKey = @"KeyboardDevice";
 static NSString * const VZAudioOutputEnabledKey = @"AudioOutputEnabled";
 static NSString * const VZAudioInputEnabledKey = @"AudioInputEnabled";
-static NSString * const VZAudioInputConfiguredKey = @"AudioInputConfigured";
 static NSString * const VZVideoToolboxEnabledKey = @"VideoToolboxEnabled";
 static NSString * const VZDisplayModeKey = @"DisplayMode";
 static NSString * const VZDisplayWidthKey = @"DisplayWidth";
@@ -366,7 +365,6 @@ NSDictionary *VZVMDefaultOptions(void)
         VZGuestToolsRemovalPendingKey: @NO,
         VZAudioOutputEnabledKey: @YES,
         VZAudioInputEnabledKey: @YES,
-        VZAudioInputConfiguredKey: @NO,
         VZVideoToolboxEnabledKey: @YES,
         VZDisplayModeKey: @"NativeRetina",
         VZDisplayWidthKey: @1920,
@@ -384,12 +382,6 @@ NSDictionary *VZVMOptionsForBundle(NSString *bundlePath)
         [bundlePath stringByAppendingPathComponent:VZVMConfigurationFileName]];
     if ([saved isKindOfClass:NSDictionary.class])
         [options addEntriesFromDictionary:saved];
-    // Older manifests did not save an explicit microphone preference.
-    // Preserve microphone passthrough unless the user explicitly disabled it.
-    if (![saved[VZAudioInputConfiguredKey] boolValue]) {
-        options[VZAudioInputEnabledKey] = @YES;
-        options[VZAudioInputConfiguredKey] = @NO;
-    }
     [options removeObjectForKey:@"EnhancedMetalOpenGLEnabled"];
     if (![saved[VZPointingDeviceKey] isKindOfClass:NSString.class])
         options[VZPointingDeviceKey] =
@@ -1544,8 +1536,6 @@ void VZRemovePaths(NSArray<NSString *> *paths)
         self.options[VZGuestToolsRemovalPendingKey] = @NO;
         [self setGuestToolsSwitchOn:YES openGLOn:YES animated:YES];
     }
-    if (sender.tag == 1)
-        self.options[VZAudioInputConfiguredKey] = @YES;
     self.options[keys[sender.tag]] = @(sender.on);
 }
 
