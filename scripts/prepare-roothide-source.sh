@@ -1,5 +1,6 @@
 #!/bin/bash
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 UPSTREAM_REPO="https://github.com/nfzerox/VirtualMacOniPad.git"
 CUP_REPO="https://github.com/cupecups/VirtualMacOniPad-Roothide.git"
@@ -109,6 +110,12 @@ echo "Checking whether the pinned Cupecups port applies cleanly..."
 git -C "$SOURCE" apply --check -p1 "$PATCH_FILE" ||
     die "Cupecups port does not apply cleanly to this upstream source. Update the port before building this version."
 git -C "$SOURCE" apply -p1 "$PATCH_FILE"
+
+# Keep microphone capture opt-in and use playback-only audio sessions unless
+# a VM explicitly enables microphone input.
+python3 "$SCRIPT_DIR/apply-microphone-audio-policy.py" \
+    "$SOURCE/VirtualMac/vz/host/VirtualMacApp.m" \
+    "$SOURCE/VirtualMac/vz/host/VZVMLibraryViewController.m"
 
 # Make the in-app version follow the selected upstream ref instead of
 # retaining Cupecups' original 1.2.3 label. The workflow supplies
