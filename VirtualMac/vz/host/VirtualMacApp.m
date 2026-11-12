@@ -4619,41 +4619,51 @@ static void configureAudio(id configuration, NSDictionary *options) {
         return;
     }
 
-    // Ventura's native macOS VM configuration uses virtio-sound with host
-    // stream attachments. Use the same path for playback and microphone input.
+    // Keep playback and capture on separate virtio-sound devices. Starting
+    // the guest output stream must not start the host microphone input stream.
     BOOL outputEnabled = [options[@"AudioOutputEnabled"] boolValue];
     BOOL inputEnabled = [options[@"AudioInputEnabled"] boolValue];
     if (!outputEnabled && !inputEnabled) {
         printf("[VirtualMac] audio disabled by VM configuration\n");
         return;
     }
-    id sink = outputEnabled ? NEW("VZHostAudioOutputStreamSink") : nil;
-    id output = outputEnabled
-        ? NEW("VZVirtioSoundDeviceOutputStreamConfiguration") : nil;
-    id source = inputEnabled ? NEW("VZHostAudioInputStreamSource") : nil;
-    id input = inputEnabled
-        ? NEW("VZVirtioSoundDeviceInputStreamConfiguration") : nil;
-    id sound = NEW("VZVirtioSoundDeviceConfiguration");
-    if ((outputEnabled && (!sink || !output)) ||
-        (inputEnabled && (!source || !input)) || !sound) {
-        printf("[VirtualMac] virtio audio classes unavailable sink=%p output=%p "
-               "source=%p input=%p device=%p\n",
-               sink, output, source, input, sound);
+
+    NSMutableArray *audioDevices = [NSMutableArray array];
+    if (outputEnabled) {
+        id sink = NEW("VZHostAudioOutputStreamSink");
+        id output = NEW("VZVirtioSoundDeviceOutputStreamConfiguration");
+        id outputDevice = NEW("VZVirtioSoundDeviceConfiguration");
+        if (sink && output && outputDevice) {
+            setObj(output, "setSink:", sink);
+            setObj(outputDevice, "setStreams:", @[output]);
+            [audioDevices addObject:outputDevice];
+        } else {
+            printf("[VirtualMac] virtio audio output unavailable sink=%p stream=%p device=%p\n",
+                   sink, output, outputDevice);
+        }
+    }
+
+    if (inputEnabled) {
+        id source = NEW("VZHostAudioInputStreamSource");
+        id input = NEW("VZVirtioSoundDeviceInputStreamConfiguration");
+        id inputDevice = NEW("VZVirtioSoundDeviceConfiguration");
+        if (source && input && inputDevice) {
+            setObj(input, "setSource:", source);
+            setObj(inputDevice, "setStreams:", @[input]);
+            [audioDevices addObject:inputDevice];
+        } else {
+            printf("[VirtualMac] virtio microphone input unavailable source=%p stream=%p device=%p\n",
+                   source, input, inputDevice);
+        }
+    }
+
+    if (audioDevices.count == 0) {
+        printf("[VirtualMac] no usable virtio audio devices were created\n");
         return;
     }
-    NSMutableArray *streams = [NSMutableArray array];
-    if (inputEnabled) {
-        setObj(input, "setSource:", source);
-        [streams addObject:input];
-    }
-    if (outputEnabled) {
-        setObj(output, "setSink:", sink);
-        [streams addObject:output];
-    }
-    setObj(sound, "setStreams:", streams);
-    setObj(configuration, "setAudioDevices:", @[sound]);
-    printf("[VirtualMac] configured virtio audio output=%d/%p input=%d/%p\n",
-           outputEnabled, sink, inputEnabled, source);
+    setObj(configuration, "setAudioDevices:", audioDevices);
+    printf("[VirtualMac] configured separate virtio audio devices count=%lu output=%d input=%d\n",
+           (unsigned long)audioDevices.count, outputEnabled, inputEnabled);
 }
 
 static BOOL videoToolboxAcceleratorSupported(id self, SEL selector) {
