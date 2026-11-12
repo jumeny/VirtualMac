@@ -47,7 +47,6 @@ typedef struct {
 } VZMemorystatusPriorityProperties;
 
 static BOOL gVMJetsamProtectionActive;
-static BOOL gAudioSessionActive;
 
 static void setVMJetsamProtection(BOOL active)
 {
@@ -4178,7 +4177,6 @@ static void VZWriteInstallationAttempt(NSString *attemptPath, NSString *state,
 
 - (void)finishVMAndShowLibraryWithError:(NSError *)error
 {
-    deactivateAudioSession();
     setVMJetsamProtection(NO);
     gSoftwareKeyboardRequested = NO;
     [gGamepadBridge detachFromVirtualMachine];
@@ -4619,51 +4617,41 @@ static void configureAudio(id configuration, NSDictionary *options) {
         return;
     }
 
-    // Keep playback and capture on separate virtio-sound devices. Starting
-    // the guest output stream must not start the host microphone input stream.
+    // Ventura's native macOS VM configuration uses virtio-sound with host
+    // stream attachments. Use the same path for playback and microphone input.
     BOOL outputEnabled = [options[@"AudioOutputEnabled"] boolValue];
     BOOL inputEnabled = [options[@"AudioInputEnabled"] boolValue];
     if (!outputEnabled && !inputEnabled) {
         printf("[VirtualMac] audio disabled by VM configuration\n");
         return;
     }
-
-    NSMutableArray *audioDevices = [NSMutableArray array];
-    if (outputEnabled) {
-        id sink = NEW("VZHostAudioOutputStreamSink");
-        id output = NEW("VZVirtioSoundDeviceOutputStreamConfiguration");
-        id outputDevice = NEW("VZVirtioSoundDeviceConfiguration");
-        if (sink && output && outputDevice) {
-            setObj(output, "setSink:", sink);
-            setObj(outputDevice, "setStreams:", @[output]);
-            [audioDevices addObject:outputDevice];
-        } else {
-            printf("[VirtualMac] virtio audio output unavailable sink=%p stream=%p device=%p\n",
-                   sink, output, outputDevice);
-        }
-    }
-
-    if (inputEnabled) {
-        id source = NEW("VZHostAudioInputStreamSource");
-        id input = NEW("VZVirtioSoundDeviceInputStreamConfiguration");
-        id inputDevice = NEW("VZVirtioSoundDeviceConfiguration");
-        if (source && input && inputDevice) {
-            setObj(input, "setSource:", source);
-            setObj(inputDevice, "setStreams:", @[input]);
-            [audioDevices addObject:inputDevice];
-        } else {
-            printf("[VirtualMac] virtio microphone input unavailable source=%p stream=%p device=%p\n",
-                   source, input, inputDevice);
-        }
-    }
-
-    if (audioDevices.count == 0) {
-        printf("[VirtualMac] no usable virtio audio devices were created\n");
+    id sink = outputEnabled ? NEW("VZHostAudioOutputStreamSink") : nil;
+    id output = outputEnabled
+        ? NEW("VZVirtioSoundDeviceOutputStreamConfiguration") : nil;
+    id source = inputEnabled ? NEW("VZHostAudioInputStreamSource") : nil;
+    id input = inputEnabled
+        ? NEW("VZVirtioSoundDeviceInputStreamConfiguration") : nil;
+    id sound = NEW("VZVirtioSoundDeviceConfiguration");
+    if ((outputEnabled && (!sink || !output)) ||
+        (inputEnabled && (!source || !input)) || !sound) {
+        printf("[VirtualMac] virtio audio classes unavailable sink=%p output=%p "
+               "source=%p input=%p device=%p\n",
+               sink, output, source, input, sound);
         return;
     }
-    setObj(configuration, "setAudioDevices:", audioDevices);
-    printf("[VirtualMac] configured separate virtio audio devices count=%lu output=%d input=%d\n",
-           (unsigned long)audioDevices.count, outputEnabled, inputEnabled);
+    NSMutableArray *streams = [NSMutableArray array];
+    if (inputEnabled) {
+        setObj(input, "setSource:", source);
+        [streams addObject:input];
+    }
+    if (outputEnabled) {
+        setObj(output, "setSink:", sink);
+        [streams addObject:output];
+    }
+    setObj(sound, "setStreams:", streams);
+    setObj(configuration, "setAudioDevices:", @[sound]);
+    printf("[VirtualMac] configured virtio audio output=%d/%p input=%d/%p\n",
+           outputEnabled, sink, inputEnabled, source);
 }
 
 static BOOL videoToolboxAcceleratorSupported(id self, SEL selector) {
@@ -4718,60 +4706,33 @@ static void configureVideoToolbox(id configuration, NSDictionary *options) {
 #endif
 #define VZAVSessionOptionAllowBluetoothHFP AVAudioSessionCategoryOptionAllowBluetoothHFP
 
-static BOOL activateAudioSession(AVAudioSessionCategory category,
-                                AVAudioSessionCategoryOptions options,
-                                const char *purpose) {
-    AVAudioSession *session = AVAudioSession.sharedInstance;
-    NSError *categoryError = nil;
-    BOOL categoryOK = [session setCategory:category
-                                      mode:AVAudioSessionModeDefault
-                                   options:options
-                                     error:&categoryError];
-    NSError *activeError = nil;
-    BOOL activeOK = categoryOK &&
-        [session setActive:YES error:&activeError];
-    gAudioSessionActive = activeOK;
-    NSError *reportedError = activeError ?: categoryError;
-    printf("[VirtualMac] audio session purpose=%s category=%s configured=%d active=%d error=%s\n",
-           purpose, category.UTF8String, categoryOK, activeOK,
-           reportedError ? reportedError.localizedDescription.UTF8String : "none");
-    return activeOK;
-}
-
-static BOOL activatePlaybackAudioSession(void) {
-    return activateAudioSession(
-        AVAudioSessionCategoryPlayback,
-        AVAudioSessionCategoryOptionMixWithOthers,
-        "playback-only");
-}
-
-static BOOL activateMicrophoneAudioSession(void) {
-    AVAudioSessionCategoryOptions sessionOptions =
-        AVAudioSessionCategoryOptionMixWithOthers |
-        AVAudioSessionCategoryOptionDefaultToSpeaker |
-        VZAVSessionOptionAllowBluetoothHFP;
-    return activateAudioSession(
-        AVAudioSessionCategoryPlayAndRecord, sessionOptions, "microphone");
-}
-
-static void requestMicrophoneAccess(void (^continuation)(BOOL granted)) {
+static void requestMicrophoneAccess(dispatch_block_t continuation) {
     AVAudioSession *session = AVAudioSession.sharedInstance;
     AVAudioSessionRecordPermission permission = session.recordPermission;
     printf("[VirtualMac] microphone permission before request=%lu\n",
            (unsigned long)permission);
-
-    if (permission == AVAudioSessionRecordPermissionDenied) {
-        printf("[VirtualMac] microphone permission denied; input disabled for this boot\n");
-        continuation(NO);
+    NSError *sessionError = nil;
+    AVAudioSessionCategoryOptions sessionOptions =
+        AVAudioSessionCategoryOptionMixWithOthers |
+        AVAudioSessionCategoryOptionDefaultToSpeaker |
+        VZAVSessionOptionAllowBluetoothHFP;
+    BOOL categoryOK = [session
+        setCategory:AVAudioSessionCategoryPlayAndRecord
+               mode:AVAudioSessionModeDefault
+            options:sessionOptions error:&sessionError];
+    BOOL activeOK = [session setActive:YES error:&sessionError];
+    printf("[VirtualMac] audio session category=%d active=%d error=%s\n",
+           categoryOK, activeOK,
+           sessionError ? sessionError.localizedDescription.UTF8String
+                        : "none");
+    if (permission != AVAudioSessionRecordPermissionUndetermined) {
+        continuation();
         return;
     }
-    if (permission == AVAudioSessionRecordPermissionGranted) {
-        continuation(activateMicrophoneAudioSession());
-        return;
-    }
 
-    // Request the normal iPadOS recording permission when the VM exposes
-    // microphone input. Playback-only VMs never enter this code path.
+    // The host audio source is created by Virtualization only after VM setup.
+    // Ask under the visible application bundle first so TCC attributes capture
+    // to Virtual Mac instead of silently giving its private VMM child zeros.
     __block BOOL continued = NO;
     void (^finish)(BOOL, const char *) = ^(BOOL granted, const char *reason) {
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -4780,62 +4741,18 @@ static void requestMicrophoneAccess(void (^continuation)(BOOL granted)) {
             continued = YES;
             printf("[VirtualMac] microphone permission granted=%d via=%s\n",
                    granted, reason);
-            BOOL active = granted && activateMicrophoneAudioSession();
-            continuation(active);
+            continuation();
         });
     };
     [session requestRecordPermission:^(BOOL granted) {
         finish(granted, "TCC callback");
     }];
-    // Some platform-installed builds may not deliver the TCC callback.
-    // Never make VM startup wait indefinitely.
+    // A platform-installed app on iPadOS can fail to receive a
+    // TCC callback. Never make the VM library depend indefinitely on it.
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC),
                    dispatch_get_main_queue(), ^{
         finish(NO, "timeout");
     });
-}
-
-static void prepareAudioSessionForVM(
-    NSDictionary *options, void (^continuation)(NSDictionary *)) {
-    BOOL inputEnabled = [options[@"AudioInputEnabled"] boolValue];
-    BOOL outputEnabled = [options[@"AudioOutputEnabled"] boolValue];
-
-    if (inputEnabled) {
-        requestMicrophoneAccess(^(BOOL granted) {
-            if (granted) {
-                continuation(options);
-                return;
-            }
-            NSMutableDictionary *playbackOnly =
-                [NSMutableDictionary dictionaryWithDictionary:options];
-            playbackOnly[@"AudioInputEnabled"] = @NO;
-            printf("[VirtualMac] continuing without microphone input\n");
-            if (outputEnabled)
-                activatePlaybackAudioSession();
-            continuation(playbackOnly);
-        });
-        return;
-    }
-
-    // YouTube and other guest audio playback need an output-only session,
-    // not PlayAndRecord. This category does not open the host microphone.
-    if (outputEnabled)
-        activatePlaybackAudioSession();
-    continuation(options);
-}
-
-static void deactivateAudioSession(void) {
-    if (!gAudioSessionActive)
-        return;
-    NSError *error = nil;
-    BOOL deactivated = [AVAudioSession.sharedInstance
-        setActive:NO error:&error];
-    printf("[VirtualMac] audio session deactivated=%d error=%s\n",
-           deactivated,
-           error ? error.localizedDescription.UTF8String : "none");
-    // AVAudioSession can report a busy status while still transitioning
-    // inactive; do not retain a stale active flag across VM shutdown.
-    gAudioSessionActive = NO;
 }
 
 static void configureNetwork(id configuration, NSDictionary *options) {
@@ -5677,9 +5594,10 @@ static NSDictionary *runtimeDisplayOptions(NSDictionary *options,
     return runtime;
 }
 
-static void startVirtualMachineWithRuntimeOptions(
-    UIView *container, id delegate, NSString *bundlePath,
-    NSDictionary *runtimeOptions) {
+static void startVirtualMachine(UIView *container, id delegate,
+                                NSString *bundlePath,
+                                NSDictionary *options) {
+    NSDictionary *runtimeOptions = runtimeDisplayOptions(options, container);
     // Ventura's VZ startup performs synchronous XPC and device construction.
     // On iPadOS 14, doing that from a tap blocks UIKit long enough to trip the
     // 10-second scene-update watchdog. Keep iPadOS 15/16 on their proven path.
@@ -5696,20 +5614,6 @@ static void startVirtualMachineWithRuntimeOptions(
         return;
     }
     startVirtualMachineWorker(container, delegate, bundlePath, runtimeOptions);
-}
-
-static void startVirtualMachine(UIView *container, id delegate,
-                                NSString *bundlePath,
-                                NSDictionary *options) {
-    NSDictionary *runtimeOptions = runtimeDisplayOptions(options, container);
-    // Configure audio only for the selected VM. Playback uses a playback-only
-    // session; microphone capture requires an explicit VM setting and TCC grant.
-    dispatch_async(dispatch_get_main_queue(), ^{
-        prepareAudioSessionForVM(runtimeOptions, ^(NSDictionary *preparedOptions) {
-            startVirtualMachineWithRuntimeOptions(
-                container, delegate, bundlePath, preparedOptions);
-        });
-    });
 }
 
 // ─── External Display (Keynote-style) ────────────────────────────────────────
@@ -5985,7 +5889,7 @@ static void disconnectExternalDisplay(void) {
     startHealthMonitor();
     startControlMonitor();
     printf("[VirtualMac] VM picker ready inputWindow=%p\n", inputView.window);
-    dispatch_async(dispatch_get_main_queue(), ^{
+    requestMicrophoneAccess(^{
         NSString *controlPath = @"/tmp/vz-autoboot-path";
         NSString *autoBootPath = [NSString
             stringWithContentsOfFile:controlPath
