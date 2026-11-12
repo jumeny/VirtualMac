@@ -384,8 +384,8 @@ NSDictionary *VZVMOptionsForBundle(NSString *bundlePath)
         [bundlePath stringByAppendingPathComponent:VZVMConfigurationFileName]];
     if ([saved isKindOfClass:NSDictionary.class])
         [options addEntriesFromDictionary:saved];
-    // Older manifests inherited microphone-on as a default. Treat those as
-    // legacy defaults, not as a deliberate permission to capture audio.
+    // Older manifests did not save an explicit microphone preference.
+    // Preserve microphone passthrough unless the user explicitly disabled it.
     if (![saved[VZAudioInputConfiguredKey] boolValue]) {
         options[VZAudioInputEnabledKey] = @YES;
         options[VZAudioInputConfiguredKey] = @NO;
