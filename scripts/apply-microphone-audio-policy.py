@@ -232,8 +232,8 @@ def patch_library(path: Path) -> None:
     )
     text = replace_once(
         text,
-        "    if ([saved isKindOfClass:NSDictionary.class])\n        [options addEntriesFromDictionary:saved];\n    [options removeObjectForKey:@\"EnhancedMetalOpenGLEnabled\"];",
-        "    if ([saved isKindOfClass:NSDictionary.class])\n        [options addEntriesFromDictionary:saved];\n    // Older manifests inherited microphone-on as a default. Treat those as\n    // legacy defaults, not as a deliberate permission to capture audio.\n    if (![saved[VZAudioInputConfiguredKey] boolValue]) {\n        options[VZAudioInputEnabledKey] = @NO;\n        options[VZAudioInputConfiguredKey] = @NO;\n    }\n    [options removeObjectForKey:@\"EnhancedMetalOpenGLEnabled\"];",
+        "    if ([saved isKindOfClass:NSDictionary.class])\n        [options addEntriesFromDictionary:saved];",
+        "    if ([saved isKindOfClass:NSDictionary.class])\n        [options addEntriesFromDictionary:saved];\n    // Older manifests inherited microphone-on as a default. Treat those as\n    // legacy defaults, not as a deliberate permission to capture audio.\n    if (![saved[VZAudioInputConfiguredKey] boolValue]) {\n        options[VZAudioInputEnabledKey] = @NO;\n        options[VZAudioInputConfiguredKey] = @NO;\n    }",
         "legacy VM microphone migration",
     )
     text = replace_once(
