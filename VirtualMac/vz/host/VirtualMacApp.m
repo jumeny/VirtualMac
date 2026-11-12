@@ -4826,11 +4826,7 @@ static void deactivateAudioSession(void) {
     // AVAudioSession can report a busy status while still transitioning
     // inactive; do not retain a stale active flag across VM shutdown.
     gAudioSessionActive = NO;
-}'''
-
-    text = replace_regex_once(
-        text,
-        r"static void requestMicrophoneAccess\(dispatch_block_t continuation\) \{.*?\n\}\n(?=\nstatic void configureNetwork
+}
 
 static void configureNetwork(id configuration, NSDictionary *options) {
     NSString *mode = options[@"NetworkMode"] ?: @"NAT";
