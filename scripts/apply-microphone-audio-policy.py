@@ -14,7 +14,7 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
 
 
 def replace_regex_once(text: str, pattern: str, replacement: str, label: str) -> str:
-    updated, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+    updated, count = re.subn(pattern, lambda _match: replacement, text, count=1, flags=re.S)
     if count != 1:
         raise SystemExit(f"{label}: expected one source block, found {count}")
     return updated
