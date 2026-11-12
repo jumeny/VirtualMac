@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply the opt-in microphone lifecycle fix to a prepared Virtual Mac source tree."""
+"""Apply the separate playback/input audio policy to prepared Virtual Mac sources."""
 
 from pathlib import Path
 import re
@@ -143,7 +143,7 @@ static void requestMicrophoneAccess(void (^continuation)(BOOL granted)) {
         return;
     }
 
-    // Request permission only when a VM configuration explicitly enables
+    // Request the normal iPadOS recording permission when the VM exposes
     // microphone input. Playback-only VMs never enter this code path.
     __block BOOL continued = NO;
     void (^finish)(BOOL, const char *) = ^(BOOL granted, const char *reason) {
