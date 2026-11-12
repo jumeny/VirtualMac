@@ -16,7 +16,7 @@ checks = {
     "system microphone permission request is preserved": (
         "requestRecordPermission:" in app
         and "NSMicrophoneUsageDescription" in (
-            root / "vz/host/VirtualMac-Info.plist"
+            root / "VirtualMac" / "vz" / "host" / "VirtualMac-Info.plist"
         ).read_text()
     ),
     "microphone permission is requested by the existing system flow": (
