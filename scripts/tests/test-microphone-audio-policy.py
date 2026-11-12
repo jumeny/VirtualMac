@@ -16,7 +16,7 @@ checks = {
     "system microphone permission request is preserved": (
         "requestRecordPermission:" in app
         and "NSMicrophoneUsageDescription" in (
-            root / "VirtualMac" / "VirtualMac-Info.plist"
+            root / "vz/host/VirtualMac-Info.plist"
         ).read_text()
     ),
     "microphone permission is requested by the existing system flow": (
@@ -30,7 +30,7 @@ checks = {
     "output and microphone use separate virtio sound devices": (
         'setObj(outputDevice, "setStreams:", @[output]);' in app
         and 'setObj(inputDevice, "setStreams:", @[input]);' in app
-        and "setAudioDevices:", audioDevices" in app
+        and '"setAudioDevices:", audioDevices' in app
     ),
     "new VM microphone input remains enabled by default": (
         "VZAudioInputEnabledKey: @YES" in library
