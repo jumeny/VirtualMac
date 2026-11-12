@@ -1,0 +1,146 @@
+name: Build Guest-Lock RootHide package
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: "Type an nfzerox tag, branch, or commit (leave blank only if using the ZIP URL)"
+        required: false
+        type: string
+      source_zip_url:
+        description: "Optional ZIP URL from github.com/nfzerox/VirtualMacOniPad (overrides upstream_ref)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: guest-lock-roothide-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 180
+    steps:
+      - name: Check out the RootHide build helper from main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: port
+          fetch-depth: 1
+
+      - name: Prepare selected nfzerox source and apply Cupecups port
+        id: prepare
+        env:
+          UPSTREAM_REF: ${{ inputs.upstream_ref }}
+          SOURCE_ZIP_URL: ${{ inputs.source_zip_url }}
+        run: |
+          bash port/scripts/prepare-roothide-source.sh
+
+      - name: Apply temporary guest-lock implementation
+        env:
+          SOURCE_DIR: ${{ steps.prepare.outputs.source_dir }}
+        run: |
+          python3 port/scripts/apply-roothide-lock-feature.py "$SOURCE_DIR"
+
+      - name: Install package build dependencies
+        run: |
+          brew update
+          brew install dpkg ldid
+
+      - name: Run Cupecups RootHide regression tests
+        env:
+          SOURCE_DIR: ${{ steps.prepare.outputs.source_dir }}
+        run: |
+          cd "$SOURCE_DIR/VirtualMac"
+          bash scripts/tests/test-jailbreak-paths.sh
+          bash scripts/tests/test-standard-launcher.sh
+          bash scripts/tests/test-runtime-processes.sh
+          bash scripts/tests/test-roothide-legacy-storage.sh
+          bash scripts/tests/test-roothide-storage.sh
+          bash scripts/tests/test-roothide-interpose.sh --files-only
+          python3 tests/test-restore-cleanup.py
+          python3 tests/test-roothide-service-ownership.py
+
+      - name: Download the pinned Cupecups runtime base package
+        env:
+          BUILD_ROOT: ${{ runner.temp }}/virtualmac-build
+        run: |
+          set -euo pipefail
+          mkdir -p "$BUILD_ROOT/downloads"
+          BASE_DEB="$BUILD_ROOT/downloads/VirtualMac_1.2.3.deb"
+          curl --fail --location --retry 3 --retry-all-errors \
+            --output "$BASE_DEB.part" \
+            "https://github.com/nfzerox/VirtualMacOniPad/releases/download/1.2.3/VirtualMac_1.2.3.deb"
+          mv "$BASE_DEB.part" "$BASE_DEB"
+          EXPECTED_SHA256="435ce1dc76b9e18b1547c77b84e2cf33ffe40a16be63e366f181d14709a41aa0"
+          ACTUAL_SHA256="$(shasum -a 256 "$BASE_DEB" | awk '{print $1}')"
+          [[ "$ACTUAL_SHA256" == "$EXPECTED_SHA256" ]] || {
+            echo "::error::Pinned 1.2.3 runtime package checksum mismatch"
+            exit 1
+          }
+          [[ "$(dpkg-deb -f "$BASE_DEB" Package)" == "com.mac.virtual" ]] || {
+            echo "::error::Unexpected package identifier in pinned runtime package"
+            exit 1
+          }
+          echo "Verified the Cupecups-pinned 1.2.3 runtime base ($ACTUAL_SHA256)"
+
+      - name: Build Guest-Lock RootHide package from the prepared source
+        id: package
+        env:
+          SOURCE_DIR: ${{ steps.prepare.outputs.source_dir }}
+          UPSTREAM_REF: ${{ steps.prepare.outputs.upstream_ref }}
+        run: |
+          set -euo pipefail
+          SAFE_VERSION="$(printf '%s' "${UPSTREAM_REF:-zip-build}" | tr '/ ' '--' | tr -cd 'A-Za-z0-9.+:~_-')"
+          SAFE_VERSION="${SAFE_VERSION:-zip-build}"
+          APP_VERSION="${UPSTREAM_REF#refs/tags/}"
+          APP_VERSION="${APP_VERSION#refs/heads/}"
+          APP_VERSION="$(printf '%s' "$APP_VERSION" | tr '/ ' '--' | tr -cd 'A-Za-z0-9.+:~_-')"
+          APP_VERSION="${APP_VERSION:-$SAFE_VERSION}"
+          export VZ_APP_VERSION="${APP_VERSION}-guest-lock-roothide"
+          if [[ ! "$SAFE_VERSION" =~ ^[0-9] ]]; then
+            SAFE_VERSION="0~$SAFE_VERSION"
+          fi
+
+          BUILD_ROOT="$RUNNER_TEMP/virtualmac-build"
+          export VZ_BUILD_ROOT="$BUILD_ROOT"
+          export VZ_PACKAGE_VERSION="2:${SAFE_VERSION}+guestlock.roothide.${GITHUB_RUN_NUMBER}"
+          unset VZ_BASE_DEB VZ_RELEASE_DEB
+
+          cd "$SOURCE_DIR/VirtualMac"
+          bash scripts/build-roothide-deb.sh 2>&1 | tee "$RUNNER_TEMP/roothide-build.log"
+
+          ROOT_DEB="$BUILD_ROOT/roothide/VirtualMac_roothide.deb"
+          test -s "$ROOT_DEB" || {
+            echo "::error::RootHide .deb was not produced"
+            exit 1
+          }
+          [[ "$(dpkg-deb -f "$ROOT_DEB" Package)" == "com.mac.virtual" ]] || {
+            echo "::error::RootHide package identifier is incorrect"
+            exit 1
+          }
+          [[ "$(dpkg-deb -f "$ROOT_DEB" Version)" == "$VZ_PACKAGE_VERSION" ]] || {
+            echo "::error::RootHide package version does not match the requested build version"
+            exit 1
+          }
+
+          OUTPUT="$RUNNER_TEMP/VirtualMac_${SAFE_VERSION}_guest-lock_roothide.deb"
+          cp "$ROOT_DEB" "$OUTPUT"
+          {
+            echo "deb_path=$OUTPUT"
+            echo "version=$SAFE_VERSION"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VirtualMac-Guest-Lock-RootHide-${{ steps.package.outputs.version }}
+          path: |
+            ${{ steps.package.outputs.deb_path }}
+            ${{ runner.temp }}/roothide-build.log
+          if-no-files-found: error
+          retention-days: 30
+
