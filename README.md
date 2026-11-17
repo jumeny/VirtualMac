@@ -2,7 +2,7 @@
 
 People have dreamed of running macOS on iPad for [more](https://www.macstories.net/stories/macpad-how-i-created-the-hybrid-mac-ipad-laptop-and-tablet-that-apple-wont-make/) [than](https://github.com/khanhduytran0/MacWSBootingGuide) [a](https://khronokernel.com/apple/silicon/2021/01/17/QEMU-AS.html) [decade](https://worthdoingbadly.com/macappsios/). Today, that dream comes true. With Virtual Mac, iPad finally breaks free from iPadOS, enabling pro apps like Xcode, Terminal, Final Cut Pro, Logic Pro, and Pixelmator Pro to run directly on device. Requires iPad Pro (M1, M2) or iPad Air (M1) running iPadOS 14 up to 16.3.1.
 
-> _This is an experimental version to add support for the Dopamine-roothide environment. Tested on iPad Pro (M2, 4th generation), not tested for version 3.0.12-28 and higher. Install and use at your own risk._
+> _This is an experimental version to add support for the Dopamine-roothide environment. Tested on iPad Pro (M2, 4th generation) on Dopamine-roothide version 2.4.9.27, not tested for version 3.0.12-28 and higher. Install and use at your own risk._
 
 Running a newer version of iPadOS? Use [Henge](https://github.com/Leviidev/Henge) or [macPad](https://github.com/DCMMC/macPad) instead. [Learn more.](https://github.com/nfzerox/VirtualMacOniPad#how-can-i-run-macos-if-my-ipad-is-running-a-newer-version-of-ipados)
 
