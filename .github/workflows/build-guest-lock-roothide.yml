@@ -1,0 +1,247 @@
+name: Build RootHide package with guest lock
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: "Type an nfzerox tag, branch, or commit (leave blank only if using the ZIP URL)"
+        required: false
+        type: string
+      source_zip_url:
+        description: "Optional ZIP URL from github.com/nfzerox/VirtualMacOniPad (overrides upstream_ref)"
+        required: false
+        type: string
+      publish:
+        description: "Create a GitHub Release after all checks pass"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: roothide-guest-lock-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 180
+    steps:
+      - name: Check out the RootHide build helper from main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: port
+          fetch-depth: 1
+
+      - name: Prepare selected nfzerox source and apply Cupecups port
+        id: prepare
+        env:
+          UPSTREAM_REF: ${{ inputs.upstream_ref }}
+          SOURCE_ZIP_URL: ${{ inputs.source_zip_url }}
+        run: |
+          bash port/scripts/prepare-roothide-source.sh
+
+      - name: Apply optional guest-lock Input setting
+        env:
+          SOURCE_DIR: ${{ steps.prepare.outputs.source_dir }}
+        run: |
+          python3 port/scripts/apply-roothide-lock-feature.py "$SOURCE_DIR"
+
+      - name: Install package build dependencies
+        run: |
+          brew update
+          brew install dpkg ldid
+
+      - name: Run Cupecups RootHide regression tests
+        env:
+          SOURCE_DIR: ${{ steps.prepare.outputs.source_dir }}
+        run: |
+          cd "$SOURCE_DIR/VirtualMac"
+          bash scripts/tests/test-jailbreak-paths.sh
+          bash scripts/tests/test-standard-launcher.sh
+          bash scripts/tests/test-runtime-processes.sh
+          bash scripts/tests/test-roothide-legacy-storage.sh
+          bash scripts/tests/test-roothide-storage.sh
+          bash scripts/tests/test-roothide-interpose.sh --files-only
+          python3 tests/test-restore-cleanup.py
+          python3 tests/test-roothide-service-ownership.py
+
+      - name: Download the pinned Cupecups runtime base package
+        env:
+          BUILD_ROOT: ${{ runner.temp }}/virtualmac-build
+        run: |
+          set -euo pipefail
+          mkdir -p "$BUILD_ROOT/downloads"
+          BASE_DEB="$BUILD_ROOT/downloads/VirtualMac_1.2.3.deb"
+          curl --fail --location --retry 3 --retry-all-errors \
+            --output "$BASE_DEB.part" \
+            "https://github.com/nfzerox/VirtualMacOniPad/releases/download/1.2.3/VirtualMac_1.2.3.deb"
+          mv "$BASE_DEB.part" "$BASE_DEB"
+          EXPECTED_SHA256="435ce1dc76b9e18b1547c77b84e2cf33ffe40a16be63e366f181d14709a41aa0"
+          ACTUAL_SHA256="$(shasum -a 256 "$BASE_DEB" | awk '{print $1}')"
+          [[ "$ACTUAL_SHA256" == "$EXPECTED_SHA256" ]] || {
+            echo "::error::Pinned 1.2.3 runtime package checksum mismatch"
+            exit 1
+          }
+          [[ "$(dpkg-deb -f "$BASE_DEB" Package)" == "com.mac.virtual" ]] || {
+            echo "::error::Unexpected package identifier in pinned runtime package"
+            exit 1
+          }
+          echo "Verified the Cupecups-pinned 1.2.3 runtime base ($ACTUAL_SHA256)"
+
+      - name: Build RootHide package from the prepared source
+        id: package
+        env:
+          SOURCE_DIR: ${{ steps.prepare.outputs.source_dir }}
+          UPSTREAM_REF: ${{ steps.prepare.outputs.upstream_ref }}
+        run: |
+          set -euo pipefail
+          SAFE_VERSION="$(printf '%s' "${UPSTREAM_REF:-zip-build}" | tr '/ ' '--' | tr -cd 'A-Za-z0-9.+:~_-')"
+          SAFE_VERSION="${SAFE_VERSION:-zip-build}"
+          APP_VERSION="${UPSTREAM_REF#refs/tags/}"
+          APP_VERSION="${APP_VERSION#refs/heads/}"
+          APP_VERSION="$(printf '%s' "$APP_VERSION" | tr '/ ' '--' | tr -cd 'A-Za-z0-9.+:~_-')"
+          APP_VERSION="${APP_VERSION:-$SAFE_VERSION}"
+          export VZ_APP_VERSION="${APP_VERSION}-roothide"
+          if [[ ! "$SAFE_VERSION" =~ ^[0-9] ]]; then
+            SAFE_VERSION="0~$SAFE_VERSION"
+          fi
+
+          BUILD_ROOT="$RUNNER_TEMP/virtualmac-build"
+          export VZ_BUILD_ROOT="$BUILD_ROOT"
+          export VZ_PACKAGE_VERSION="2:${SAFE_VERSION}+roothide.${GITHUB_RUN_NUMBER}"
+          unset VZ_BASE_DEB VZ_RELEASE_DEB
+
+          cd "$SOURCE_DIR/VirtualMac"
+          bash scripts/build-roothide-deb.sh 2>&1 | tee "$RUNNER_TEMP/roothide-build.log"
+
+          ROOT_DEB="$BUILD_ROOT/roothide/VirtualMac_roothide.deb"
+          test -s "$ROOT_DEB" || {
+            echo "::error::RootHide .deb was not produced"
+            exit 1
+          }
+          [[ "$(dpkg-deb -f "$ROOT_DEB" Package)" == "com.mac.virtual" ]] || {
+            echo "::error::RootHide package identifier is incorrect"
+            exit 1
+          }
+          [[ "$(dpkg-deb -f "$ROOT_DEB" Version)" == "$VZ_PACKAGE_VERSION" ]] || {
+            echo "::error::RootHide package version does not match the requested build version"
+            exit 1
+          }
+
+          OUTPUT="$RUNNER_TEMP/VirtualMac_${SAFE_VERSION}_roothide.deb"
+          cp "$ROOT_DEB" "$OUTPUT"
+          {
+            echo "deb_path=$OUTPUT"
+            echo "version=$SAFE_VERSION"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VirtualMac-RootHide-Guest-Lock-${{ steps.package.outputs.version }}
+          path: |
+            ${{ steps.package.outputs.deb_path }}
+            ${{ runner.temp }}/roothide-build.log
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Fetch changelog from nfzerox
+        id: changelog
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_REF: ${{ steps.prepare.outputs.upstream_ref }}
+          UPSTREAM_COMMIT: ${{ steps.prepare.outputs.upstream_commit }}
+        run: |
+          set -euo pipefail
+          NOTES="$RUNNER_TEMP/upstream-changelog.md"
+          NOTES_TMP="$NOTES.tmp"
+          REF="$UPSTREAM_REF"
+          RELEASE_TAG=""
+
+          case "$REF" in
+            refs/tags/*)
+              RELEASE_TAG="${REF#refs/tags/}"
+              ;;
+            refs/heads/*)
+              ;;
+            *)
+              RELEASE_TAG="$REF"
+              ;;
+          esac
+
+          # nfzerox publishes its version changelog in GitHub Release notes.
+          # Use those notes for tags whenever they exist.
+          if [[ -n "$RELEASE_TAG" ]]; then
+            if gh api "repos/nfzerox/VirtualMacOniPad/releases/tags/$RELEASE_TAG" \
+                --jq '.body // empty' > "$NOTES_TMP" 2>/dev/null &&
+                [[ -s "$NOTES_TMP" ]]; then
+              mv "$NOTES_TMP" "$NOTES"
+            fi
+          fi
+
+          # Branches and commits may not have a GitHub Release. Look for a
+          # conventional changelog file in the upstream source at that ref.
+          if [[ ! -s "$NOTES" ]]; then
+            for CHANGELOG_PATH in CHANGELOG.md CHANGES.md HISTORY.md \
+                docs/CHANGELOG.md docs/CHANGES.md; do
+              if curl --fail --silent --show-error --location \
+                  "https://raw.githubusercontent.com/nfzerox/VirtualMacOniPad/$UPSTREAM_COMMIT/$CHANGELOG_PATH" \
+                  --output "$NOTES_TMP"; then
+                if [[ -s "$NOTES_TMP" ]]; then
+                  mv "$NOTES_TMP" "$NOTES"
+                  break
+                fi
+              fi
+            done
+          fi
+
+          # For an unreleased ref without a changelog file, publish the
+          # upstream commit subjects since the latest nfzerox release.
+          if [[ ! -s "$NOTES" ]]; then
+            LATEST_TAG="$(gh api repos/nfzerox/VirtualMacOniPad/releases/latest \
+              --jq '.tag_name' 2>/dev/null || true)"
+            if [[ -n "$LATEST_TAG" && "$LATEST_TAG" != "$RELEASE_TAG" ]]; then
+              gh api "repos/nfzerox/VirtualMacOniPad/compare/${LATEST_TAG}...${UPSTREAM_COMMIT}" \
+                --jq '[.commits[].commit.message | split("\n")[0]] | map("- " + .) | .[]' \
+                > "$NOTES_TMP" 2>/dev/null || true
+              if [[ -s "$NOTES_TMP" ]]; then
+                {
+                  printf 'Changes since nfzerox release %s\n\n' "$LATEST_TAG"
+                  cat "$NOTES_TMP"
+                } > "$NOTES"
+              fi
+            fi
+          fi
+
+          # Never reuse the old hard-coded packaging note if upstream has no
+          # published changelog for this ref.
+          if [[ ! -s "$NOTES" ]]; then
+            {
+              printf 'No upstream changelog or release notes were published for %s.\n\n' "$REF"
+              printf 'Upstream source: https://github.com/nfzerox/VirtualMacOniPad/commit/%s\n' "$UPSTREAM_COMMIT"
+            } > "$NOTES"
+          fi
+
+          echo "notes_path=$NOTES" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub Release
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEB_PATH: ${{ steps.package.outputs.deb_path }}
+          VERSION: ${{ steps.package.outputs.version }}
+          NOTES_PATH: ${{ steps.changelog.outputs.notes_path }}
+        run: |
+          set -euo pipefail
+          TAG="roothide-guest-lock-$VERSION-run-$GITHUB_RUN_NUMBER"
+          test -s "$NOTES_PATH"
+          gh release create "$TAG" \
+            "$DEB_PATH" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Virtual Mac RootHide $VERSION with Guest Lock" \
+            --notes-file "$NOTES_PATH"
